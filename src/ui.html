@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <body style="font-family: sans-serif; padding: 12px; font-size: 13px">
+    <div id="root" style="font-weight: 600; margin-bottom: 8px">Huray Token Export</div>
+    <button id="export" style="width: 100%; padding: 8px; margin-bottom: 12px">
+      Export tokens.json
+    </button>
+
+    <div style="display: grid; gap: 6px">
+      <input id="owner" value="huraypositive" placeholder="owner" />
+      <input id="repo" value="huray-design-token" placeholder="repo" />
+      <input id="project" placeholder="프로젝트 이름 (예: front-care-hub)" />
+      <input
+        id="branch"
+        placeholder="branch — 프로젝트 입력 시 자동"
+        readonly
+        style="background: #f4f4f4; color: #666"
+      />
+      <input
+        id="path"
+        placeholder="path — 프로젝트 입력 시 자동"
+        readonly
+        style="background: #f4f4f4; color: #666"
+      />
+      <input id="pat" type="password" placeholder="GitHub PAT (로컬 저장 — 공유 PC 주의)" />
+      <a
+        id="pat-link"
+        href="https://github.com/settings/tokens/new?scopes=repo&description=huray-design-token"
+        target="_blank"
+        rel="noopener"
+        style="font-size: 11px; color: #1a73e8; text-decoration: none"
+        >🔗 PAT 발급받기 (repo 권한 체크 → Generate)</a
+      >
+      <button id="push" style="padding: 8px">Push to GitHub</button>
+      <div id="status" style="color: #666; font-size: 12px; min-height: 16px"></div>
+    </div>
+    <!--UI_SCRIPT-->
+  </body>
+</html>
