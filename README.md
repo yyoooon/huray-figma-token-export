@@ -16,6 +16,10 @@ npm run build   # dist/code.js, dist/ui.html 생성
 Figma 데스크톱 앱 → Plugins → Development → **Import plugin from manifest** → 이 폴더의 `manifest.json` 선택.
 코드를 고치면 `npm run build` 후 플러그인을 다시 실행하면 된다.
 
+디자인 모드와 **Dev Mode 양쪽에서 실행된다** (`editorType: ["figma", "dev"]`).
+Dev Mode는 문서 읽기 전용이지만, 이 플러그인은 변수·스타일을 읽기만 하므로 동작에 차이가 없다.
+Dev Mode에서는 Inspect 패널 하단 **Plugins** 메뉴에서 실행.
+
 ## 사용
 
 토큰이 정의된 Figma 파일을 연 상태에서 플러그인 실행:
