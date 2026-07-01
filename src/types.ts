@@ -47,12 +47,8 @@ export interface SerializedFigma {
 }
 
 // ── 출력(tokens.json) 쪽 ──
-export type TokenExtensions = {
-  'com.figma.scopes': string[];
-  'com.figma.hiddenFromPublishing': boolean;
-};
+// $type/$value만 남긴 깔끔한 형태. Token Studio 메타($extensions/$themes/$metadata)는 안 붙인다.
 export type TokenLeaf = {
-  $extensions?: TokenExtensions;
   $type: string;
   $value: unknown;
 };
@@ -60,8 +56,5 @@ export interface TokenTree {
   [key: string]: TokenTree | TokenLeaf;
 }
 export interface TokensJson {
-  [setName: string]:
-    | TokenTree
-    | unknown[]
-    | { tokenSetOrder: string[] };
+  [setName: string]: TokenTree;
 }

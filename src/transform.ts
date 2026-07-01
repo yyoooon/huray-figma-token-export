@@ -31,10 +31,6 @@ export function varNameToRef(name: string): string {
 
 // ── 변수 → 세트 트리 (Task 4) ──
 
-const FLOAT_TYPE = 'number';
-const STRING_TYPE = 'text';
-const COLOR_TYPE = 'color';
-
 // 변수 id → 변수명 (별칭 복원용)
 export function nameById(figma: SerializedFigma): Map<string, string> {
   const m = new Map<string, string>();
@@ -42,34 +38,52 @@ export function nameById(figma: SerializedFigma): Map<string, string> {
   return m;
 }
 
-// $extensions = Token Studio가 붙이는 Figma 메타.
-function extOf(scopes: string[], hidden: boolean) {
-  return {
-    'com.figma.scopes': scopes,
-    'com.figma.hiddenFromPublishing': hidden,
-  };
+// scope로 DTCG $type 판정. scopes는 출력엔 안 넣고 판정에만 쓴다.
+const NUMBER_SCOPES = new Set(['OPACITY', 'FONT_WEIGHT']);
+
+export function dtcgTypeOf(
+  v: SerializedVariable,
+): 'color' | 'dimension' | 'number' | 'fontFamily' | 'string' {
+  switch (v.resolvedType) {
+    case 'COLOR':
+      return 'color';
+    case 'FLOAT':
+      return v.scopes.some((s) => NUMBER_SCOPES.has(s)) ? 'number' : 'dimension';
+    case 'STRING':
+      return v.scopes.includes('FONT_FAMILY') ? 'fontFamily' : 'string';
+    case 'BOOLEAN':
+      return 'string';
+  }
+}
+
+// 변수 id → 변수 (별칭 타입 해석용)
+export function varsById(figma: SerializedFigma): Map<string, SerializedVariable> {
+  const m = new Map<string, SerializedVariable>();
+  for (const v of figma.variables) m.set(v.id, v);
+  return m;
 }
 
 function leafFor(
-  variable: SerializedVariable,
+  v: SerializedVariable,
   value: SerializedValue,
-  names: Map<string, string>,
+  vars: Map<string, SerializedVariable>,
 ): TokenLeaf {
-  const $extensions = extOf(variable.scopes, variable.hiddenFromPublishing);
   switch (value.kind) {
     case 'COLOR':
-      return { $extensions, $type: COLOR_TYPE, $value: rgbaToHex(value) };
+      return { $type: 'color', $value: rgbaToHex(value) };
     case 'ALIAS': {
-      const target = names.get(value.id);
+      const target = vars.get(value.id);
       if (!target) throw new Error(`alias target not found: ${value.id}`);
-      return { $extensions, $type: COLOR_TYPE, $value: varNameToRef(target) };
+      return { $type: dtcgTypeOf(target), $value: varNameToRef(target.name) };
     }
     case 'FLOAT':
-      return { $extensions, $type: FLOAT_TYPE, $value: value.value };
+      return dtcgTypeOf(v) === 'dimension'
+        ? { $type: 'dimension', $value: `${value.value}px` }
+        : { $type: 'number', $value: value.value };
     case 'STRING':
-      return { $extensions, $type: STRING_TYPE, $value: value.value };
+      return { $type: dtcgTypeOf(v), $value: value.value };
     case 'BOOLEAN':
-      return { $extensions, $type: STRING_TYPE, $value: value.value };
+      return { $type: 'string', $value: String(value.value) };
   }
 }
 
@@ -84,7 +98,7 @@ function setLeaf(tree: TokenTree, path: string[], leaf: TokenLeaf): void {
 }
 
 export function buildVariableSets(figma: SerializedFigma): Record<string, TokenTree> {
-  const names = nameById(figma);
+  const vars = varsById(figma);
   const collById = new Map(figma.collections.map((c) => [c.id, c]));
   const sets: Record<string, TokenTree> = {};
 
@@ -96,7 +110,7 @@ export function buildVariableSets(figma: SerializedFigma): Record<string, TokenT
       const value = v.valuesByMode[mode.modeId];
       if (value == null) continue;
       sets[setName] = sets[setName] ?? {};
-      setLeaf(sets[setName], figmaNameToPath(v.name), leafFor(v, value, names));
+      setLeaf(sets[setName], figmaNameToPath(v.name), leafFor(v, value, vars));
     }
   }
   return sets;
@@ -104,18 +118,8 @@ export function buildVariableSets(figma: SerializedFigma): Record<string, TokenT
 
 // ── 합성 타이포 (Task 5) ──
 
+// DTCG typography 합성 — 표준 5필드만 (Token Studio 합성 필드는 안 붙인다).
 const TYPO_PROPS = ['fontFamily', 'fontWeight', 'lineHeight', 'fontSize', 'letterSpacing'] as const;
-
-// Token Studio가 모든 타이포에 붙이는 합성 ref(변수 바인딩 아님 — 상수).
-// textDecoration만 -underline 변형에서 underline. (정확한 값은 합격 deep-equal로 확정)
-function syntheticTypoRefs(name: string): Record<string, string> {
-  return {
-    paragraphSpacing: '{paragraphSpacing.0}',
-    paragraphIndent: '{paragraphIndent.0}',
-    textCase: '{textCase.none}',
-    textDecoration: name.endsWith('-underline') ? '{textDecoration.underline}' : '{textDecoration.none}',
-  };
-}
 
 export function buildTypographyTokens(figma: SerializedFigma): TokenTree {
   const names = nameById(figma);
@@ -131,7 +135,6 @@ export function buildTypographyTokens(figma: SerializedFigma): TokenTree {
       if (!target) throw new Error(`typo bound var not found: ${id}`);
       $value[prop] = varNameToRef(target);
     }
-    Object.assign($value, syntheticTypoRefs(variant));
     tree[group] = tree[group] ?? {};
     (tree[group] as TokenTree)[variant] = { $type: 'typography', $value };
   }
@@ -176,13 +179,5 @@ export function transform(figma: SerializedFigma): TokensJson {
   // Effect/Mode 1 은 'Effect' 변수 컬렉션에서 buildVariableSets 가 이미 만든다.
   // (이펙트 '스타일'에서 파생하면 스타일 이름이 변수 이름과 달라 'Over contents'가 깨진다.)
 
-  const out: TokensJson = {};
-  const order: string[] = [];
-  for (const [name, tree] of Object.entries(sets)) {
-    out[name] = tree;
-    order.push(name);
-  }
-  out['$themes'] = [];
-  out['$metadata'] = { tokenSetOrder: order };
-  return out;
+  return sets;
 }

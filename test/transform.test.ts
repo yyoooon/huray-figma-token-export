@@ -6,8 +6,25 @@ import {
   buildVariableSets,
   buildTypographyTokens,
   transform,
+  dtcgTypeOf,
 } from '../src/transform';
 import type { SerializedFigma, SerializedVariable } from '../src/types';
+
+describe('dtcgTypeOf — scope로 DTCG $type 판정', () => {
+  const mk = (resolvedType: any, scopes: string[]): SerializedVariable =>
+    ({ id: 'x', name: 'n', collectionId: 'c', resolvedType, valuesByMode: {}, scopes, hiddenFromPublishing: false });
+
+  it('COLOR → color', () => expect(dtcgTypeOf(mk('COLOR', ['ALL_SCOPES']))).toBe('color'));
+  it('FLOAT + CORNER_RADIUS → dimension', () => expect(dtcgTypeOf(mk('FLOAT', ['CORNER_RADIUS']))).toBe('dimension'));
+  it('FLOAT + GAP → dimension', () => expect(dtcgTypeOf(mk('FLOAT', ['GAP']))).toBe('dimension'));
+  it('FLOAT + FONT_SIZE → dimension', () => expect(dtcgTypeOf(mk('FLOAT', ['FONT_SIZE']))).toBe('dimension'));
+  it('FLOAT + OPACITY → number', () => expect(dtcgTypeOf(mk('FLOAT', ['OPACITY']))).toBe('number'));
+  it('FLOAT + FONT_WEIGHT → number', () => expect(dtcgTypeOf(mk('FLOAT', ['FONT_WEIGHT']))).toBe('number'));
+  it('FLOAT + 미지 scope → dimension(기본)', () => expect(dtcgTypeOf(mk('FLOAT', ['???']))).toBe('dimension'));
+  it('STRING + FONT_FAMILY → fontFamily', () => expect(dtcgTypeOf(mk('STRING', ['FONT_FAMILY']))).toBe('fontFamily'));
+  it('STRING + TEXT_CONTENT → string', () => expect(dtcgTypeOf(mk('STRING', ['TEXT_CONTENT']))).toBe('string'));
+  it('BOOLEAN → string', () => expect(dtcgTypeOf(mk('BOOLEAN', []))).toBe('string'));
+});
 
 // 테스트 fixture 빌더 — scopes/hidden 기본값 채움.
 function fig(partial: Partial<SerializedFigma>): SerializedFigma {
@@ -67,22 +84,36 @@ describe('buildVariableSets', () => {
         valuesByMode: { m2: { kind: 'ALIAS', id: 'v1' } },
         scopes: ['TEXT_FILL'],
       }),
+      v({
+        id: 'r1',
+        name: 'Radius/16',
+        collectionId: 'c1',
+        resolvedType: 'FLOAT',
+        valuesByMode: { m1: { kind: 'FLOAT', value: 16 } },
+        scopes: ['CORNER_RADIUS'],
+      }),
     ],
   });
 
-  it('nests variable name path into the {collection}/{mode} set with $extensions', () => {
+  it('COLOR 리프 → color + hex', () => {
     const sets = buildVariableSets(base);
     expect((sets['Primitive/Light'] as any)['Color']['White Opacity']['950']).toEqual({
-      $extensions: { 'com.figma.scopes': ['ALL_SCOPES'], 'com.figma.hiddenFromPublishing': false },
       $type: 'color',
       $value: '#fffffff2',
     });
   });
 
-  it('resolves ALIAS to {target.name} ref dropping set name', () => {
+  it('FLOAT+CORNER_RADIUS → dimension + "16px"', () => {
+    const sets = buildVariableSets(base);
+    expect((sets['Primitive/Light'] as any)['Radius']['16']).toEqual({
+      $type: 'dimension',
+      $value: '16px',
+    });
+  });
+
+  it('ALIAS → 대상(color) 타입 + 전체경로 ref', () => {
     const sets = buildVariableSets(base);
     expect((sets['Scheme/Light'] as any)['Text']['White']['Rest']).toEqual({
-      $extensions: { 'com.figma.scopes': ['TEXT_FILL'], 'com.figma.hiddenFromPublishing': false },
       $type: 'color',
       $value: '{Color.White Opacity.950}',
     });
@@ -107,7 +138,7 @@ describe('buildTypographyTokens', () => {
     ],
   });
 
-  it('builds composite typography token with bound refs + synthetic refs (9 fields)', () => {
+  it('builds composite typography token with 5 standard fields only', () => {
     const t = buildTypographyTokens(figma);
     expect((t as any)['Display']['lg-bold']).toEqual({
       $type: 'typography',
@@ -117,10 +148,6 @@ describe('buildTypographyTokens', () => {
         lineHeight: '{Typography.Light height.leading-11}',
         fontSize: '{fontSize.9}',
         letterSpacing: '{letterSpacing.0}',
-        paragraphSpacing: '{paragraphSpacing.0}',
-        paragraphIndent: '{paragraphIndent.0}',
-        textCase: '{textCase.none}',
-        textDecoration: '{textDecoration.none}',
       },
     });
   });
@@ -142,20 +169,18 @@ describe('buildVariableSets — Effect 컬렉션이 그림자 세트를 만든�
     const sets = buildVariableSets(figma);
     const oc = (sets['Effect/Mode 1'] as any)['Inner Shadow']['Over contents'];
     expect(oc.Color).toEqual({
-      $extensions: { 'com.figma.scopes': ['EFFECT_COLOR'], 'com.figma.hiddenFromPublishing': false },
       $type: 'color',
       $value: '{Color.White Opacity.950}',
     });
     expect(oc.X).toEqual({
-      $extensions: { 'com.figma.scopes': ['EFFECT_FLOAT'], 'com.figma.hiddenFromPublishing': false },
-      $type: 'number',
-      $value: -8,
+      $type: 'dimension',
+      $value: '-8px',
     });
   });
 });
 
 describe('transform (assembly)', () => {
-  it('merges typography into the set holding its bound primitives + adds metadata', () => {
+  it('merges typography into the set holding its bound primitives (no Token Studio metadata)', () => {
     const figma = fig({
       collections: [{ id: 'c1', name: 'Primitive', modes: [{ modeId: 'm1', name: 'Light' }] }],
       variables: [
@@ -171,8 +196,8 @@ describe('transform (assembly)', () => {
     });
     const out = transform(figma) as any;
     expect(out['Primitive/Light']['Display']['lg-bold'].$type).toBe('typography');
-    expect(out['Primitive/Light']['fontSize']['9']).toMatchObject({ $type: 'number', $value: 40 });
-    expect(out['$themes']).toEqual([]);
-    expect(out['$metadata']).toEqual({ tokenSetOrder: ['Primitive/Light'] });
+    expect(out['Primitive/Light']['fontSize']['9']).toMatchObject({ $type: 'dimension', $value: '40px' });
+    expect(out['$themes']).toBeUndefined();
+    expect(out['$metadata']).toBeUndefined();
   });
 });
