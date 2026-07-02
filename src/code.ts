@@ -23,8 +23,14 @@ figma.ui.onmessage = async (msg: UIMessage) => {
     return;
   }
   if (msg.type === 'export') {
-    const raw = await extractFigma();
-    const tokens = transform(raw);
-    figma.ui.postMessage({ type: 'result', tokens, raw });
+    try {
+      const raw = await extractFigma();
+      const tokens = transform(raw);
+      figma.ui.postMessage({ type: 'result', tokens, raw });
+    } catch (err) {
+      // 추출·변환 중 예외(깨진 별칭 등)를 UI로 전달 — 안 하면 UI가 "토큰 추출 중…"에서 멈춘다.
+      const message = err instanceof Error ? err.message : String(err);
+      figma.ui.postMessage({ type: 'error', message });
+    }
   }
 };

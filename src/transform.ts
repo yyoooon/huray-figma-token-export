@@ -73,7 +73,10 @@ function leafFor(
       return { $type: 'color', $value: rgbaToHex(value) };
     case 'ALIAS': {
       const target = vars.get(value.id);
-      if (!target) throw new Error(`alias target not found: ${value.id}`);
+      if (!target)
+        throw new Error(
+          `'${v.name}' 변수가 지금 없는 다른 변수를 가리키고 있어요. 연결된 변수가 삭제됐거나 다른 라이브러리에 있는지 확인해 주세요.`,
+        );
       return { $type: dtcgTypeOf(target), $value: varNameToRef(target.name) };
     }
     case 'FLOAT':
@@ -132,7 +135,10 @@ export function buildTypographyTokens(figma: SerializedFigma): TokenTree {
       const id = style.boundVariables[prop];
       if (!id) continue;
       const target = names.get(id);
-      if (!target) throw new Error(`typo bound var not found: ${id}`);
+      if (!target)
+        throw new Error(
+          `'${style.name}' 텍스트 스타일이 지금 없는 변수를 사용하고 있어요. 연결된 변수를 확인해 주세요.`,
+        );
       $value[prop] = varNameToRef(target);
     }
     tree[group] = tree[group] ?? {};
